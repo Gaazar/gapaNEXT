@@ -18,7 +18,7 @@ add_executable (gapaNEXT "src/gapaNEXT.cpp" "src/gapaNEXT.h")
 target_link_libraries(gapaNEXT mscms.lib gdi32.lib)
 
 # 请求提权（highestAvailable: 有管理员权限时自动提升）
-target_link_options(gapaNEXT PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'")
+#target_link_options(gapaNEXT PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET gapaNEXT PROPERTY CXX_STANDARD 20)
