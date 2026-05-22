@@ -1,4 +1,4 @@
-﻿# CMakeList.txt: gapaNEXT 的 CMake 项目，在此处包括源代码并定义
+# CMakeList.txt: gapaNEXT 的 CMake 项目，在此处包括源代码并定义
 # 项目特定的逻辑。
 #
 cmake_minimum_required (VERSION 3.10)
@@ -12,7 +12,13 @@ endif()
 project ("gapaNEXT")
 
 # 将源代码添加到此项目的可执行文件。
-add_executable (gapaNEXT "gapaNEXT.cpp" "gapaNEXT.h")
+add_executable (gapaNEXT "src/gapaNEXT.cpp" "src/gapaNEXT.h")
+
+# 链接 Windows 颜色管理库 (ICM)
+target_link_libraries(gapaNEXT mscms.lib gdi32.lib)
+
+# 请求提权（highestAvailable: 有管理员权限时自动提升）
+target_link_options(gapaNEXT PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'")
 
 if (CMAKE_VERSION VERSION_GREATER 3.12)
   set_property(TARGET gapaNEXT PROPERTY CXX_STANDARD 20)
