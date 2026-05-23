@@ -1,30 +1,41 @@
 # CMakeList.txt: gapaNEXT 的 CMake 项目，在此处包括源代码并定义
 # 项目特定的逻辑。
 #
-cmake_minimum_required (VERSION 3.10)
+cmake_minimum_required(VERSION 3.10)
 
 # 如果支持，请为 MSVC 编译器启用热重载。
-if (POLICY CMP0141)
-  cmake_policy(SET CMP0141 NEW)
-  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
+if(POLICY CMP0141)
+	cmake_policy(SET CMP0141 NEW)
+	set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
+		"$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>"
+	)
 endif()
+add_compile_options(/wd4244)
+add_compile_options(/wd4267)
 
-project ("gapaNEXT")
+project("gapaNEXT")
 
 add_subdirectory("asio")
 add_subdirectory("Crow")
 
 # 将源代码添加到此项目的可执行文件。
-add_executable (gapaNEXT "src/gapaNEXT.cpp" "src/gapaNEXT.h")
+add_executable(gapaNEXT
+	"src/repl.cpp"
+	"src/repl.h"
+	"src/websvr.h"
+	"src/websvr.cpp"
+	"src/gamma.cpp"
+	"src/gamma.h"
+)
 
 # GDI32: SetDeviceGammaRamp / GetDeviceGammaRamp
-target_link_libraries(gapaNEXT gdi32.lib)
+target_link_libraries(gapaNEXT gdi32.lib Crow)
 
 # 请求提权（highestAvailable: 有管理员权限时自动提升）
 # target_link_options(gapaNEXT PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'")
 
-if (CMAKE_VERSION VERSION_GREATER 3.12)
-  set_property(TARGET gapaNEXT PROPERTY CXX_STANDARD 20)
+if(CMAKE_VERSION VERSION_GREATER 3.12)
+	set_property(TARGET gapaNEXT PROPERTY CXX_STANDARD 20)
 endif()
 
 # TODO: 如有需要，请添加测试并安装目标。

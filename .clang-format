@@ -1,1 +1,6 @@
 SortIncludes: Never
+Language: Cpp
+BasedOnStyle: Microsoft
+PointerAlignment: Left
+BreakBeforeBraces: Allman
+AlwaysBreakTemplateDeclarations: Yes

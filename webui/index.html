@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gapaNEXT - GPU Gamma Ramp Switcher</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+
+#panel { width: 420px; min-width: 420px; background: #16213e; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; border-right: 1px solid #0f3460; }
+#main { flex: 1; display: flex; flex-direction: column; padding: 16px; overflow: hidden; }
+#main .section { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#main .section .preview-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; min-height: 0; }
+
+h2 { font-size: 14px; color: #e94560; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+.section { background: #0f3460; border-radius: 8px; padding: 12px; }
+
+canvas { border-radius: 4px; display: block; }
+#curveCanvas { cursor: crosshair; background: #1a1a2e; width: 100%; }
+#previewCanvas { width: 100%; height: 100%; object-fit: contain; }
+
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.2s; }
+.btn:active { transform: scale(0.96); }
+.btn-apply { background: #e94560; color: #fff; }
+.btn-reset { background: #533483; color: #fff; }
+.btn-save { background: #0f3460; color: #e0e0e0; border: 1px solid #e94560; }
+.btn-sm { padding: 4px 10px; font-size: 11px; }
+select { padding: 6px 10px; border-radius: 4px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #0f3460; font-size: 13px; }
+input[type=text] { padding: 6px 10px; border-radius: 4px; background: #1a1a2e; color: #e0e0e0; border: 1px solid #0f3460; font-size: 13px; flex: 1; min-width: 120px; }
+
+#fileList { max-height: 180px; overflow-y: auto; }
+#fileList .file { padding: 6px 10px; cursor: pointer; border-radius: 4px; font-size: 12px; font-family: monospace; }
+#fileList .file:hover { background: #16213e; color: #e94560; }
+#fileList .file.selected { background: #e94560; color: #fff; }
+
+#status { font-size: 11px; color: #888; }
+#status.ok { color: #4caf50; }
+#status.err { color: #e94560; }
+
+.channel-toggle { display: flex; gap: 8px; margin-bottom: 4px; }
+.channel-toggle label { font-size: 11px; cursor: pointer; display: flex; align-items: center; gap: 3px; }
+.channel-toggle input { accent-color: #e94560; }
+
+.control-row { display: flex; gap: 8px; align-items: center; font-size: 11px; }
+.control-row input[type=range] { flex: 1; accent-color: #e94560; }
+.control-row span { min-width: 50px; text-align: right; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:-4px">
+    <span style="font-size:12px;font-weight:600;color:#e94560">gapaNEXT</span>
+    <button class="btn btn-sm btn-save" onclick="toggleLang()" id="langToggle" style="font-size:10px;padding:2px 8px">中文</button>
+  </div>
+  <div class="section">
+    <h2 data-i18n="display">Display</h2>
+    <select id="displaySelect"><option value="0" data-i18n="all_displays">All Displays</option></select>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="curve_editor">Curve Editor</h2>
+    <div class="channel-toggle">
+      <label><input type="checkbox" class="ch-toggle" data-ch="0" checked> <span style="color:#ff4444">R</span></label>
+      <label><input type="checkbox" class="ch-toggle" data-ch="1" checked> <span style="color:#44ff44">G</span></label>
+      <label><input type="checkbox" class="ch-toggle" data-ch="2" checked> <span style="color:#4488ff">B</span></label>
+      <label style="margin-left:8px"><input type="checkbox" id="linkRGB"> <span style="color:#e94560" data-i18n="link">Link</span></label>
+    </div>
+    <canvas id="curveCanvas" width="384" height="256"></canvas>
+    <div class="row" style="margin-top:4px">
+      <button class="btn btn-sm btn-reset" onclick="loadIdentity()" data-i18n="reset">Reset</button>
+    </div>
+    <div id="pointInfo" style="font-size:11px;font-family:monospace;color:#888;margin-top:4px">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2 data-i18n="presets">Presets</h2>
+    <div class="row">
+      <input type="text" id="presetName" data-i18n-placeholder="preset_name_ph" placeholder="preset_name">
+      <button class="btn btn-sm btn-save" onclick="savePreset()" data-i18n="save_preset">Save as Preset</button>
+    </div>
+    <div id="fileList" data-i18n="loading">Loading...</div>
+  </div>
+
+  <div class="section">
+    <div class="row">
+      <button class="btn btn-apply" onclick="applyGamma()" data-i18n="apply_gamma">Apply Gamma</button>
+      <button class="btn btn-reset" onclick="resetGamma()" data-i18n="reset_linear">Reset Linear</button>
+    </div>
+    <div id="status" data-i18n="ready">Ready</div>
+  </div>
+</div>
+
+<div id="main">
+  <div class="section">
+    <h2 data-i18n="gamma_preview">Gamma Preview</h2>
+    <div class="row" style="margin-bottom:6px">
+      <button class="btn btn-sm btn-save" onclick="document.getElementById('imageUpload').click()" data-i18n="upload_image">Upload Image</button>
+      <button class="btn btn-sm btn-reset" onclick="resetPreviewImage()" data-i18n="reset_image">Reset Image</button>
+      <input type="file" id="imageUpload" accept="image/*" style="display:none" onchange="handleImageUpload(event)">
+      <span style="font-size:10px;color:#888" id="previewLabel" data-i18n="builtin_test">Built-in test image</span>
+    </div>
+    <div class="row" style="margin-top:4px">
+      <span style="font-size:10px;color:#888;min-width:40px" data-i18n="original">Original</span>
+      <input type="range" id="compareSlider" min="0" max="100" value="50" style="flex:1;accent-color:#e94560" oninput="updatePreview()">
+      <span style="font-size:10px;color:#888;min-width:40px;text-align:right" data-i18n="gamma">Gamma</span>
+    </div>
+    <div class="preview-wrap">
+      <canvas id="previewCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const I18N = {
+  zh: {
+    display:"显示器", all_displays:"全部显示器", curve_editor:"曲线编辑器", link:"联动",
+    reset:"重置", presets:"预设", preset_name_ph:"预设名称", save_preset:"保存预设",
+    apply_gamma:"应用伽马", reset_linear:"重置线性", gamma_preview:"伽马预览",
+    upload_image:"上传图片", reset_image:"重置图片", original:"原始", gamma:"伽马",
+    builtin_test:"内置测试图", ready:"就绪", loading:"加载中...",
+    no_presets:"没有找到预设", point_info_hint:"点击控制点查看数值 | 双击曲线添加 | 右键控制点删除",
+    enter_preset_name:"请输入预设名称", invalid_preset:"无效的预设", save_failed:"保存失败",
+    loaded:"已加载", applied:"已应用到显示器", failed:"失败",
+    reset_ok:"已重置为线性伽马", all:"全部", error:"错误",
+    channel:"通道", point:"点"
+  },
+  en: {
+    display:"Display", all_displays:"All Displays", curve_editor:"Curve Editor", link:"Link",
+    reset:"Reset", presets:"Presets", preset_name_ph:"preset_name", save_preset:"Save as Preset",
+    apply_gamma:"Apply Gamma", reset_linear:"Reset Linear", gamma_preview:"Gamma Preview",
+    upload_image:"Upload Image", reset_image:"Reset Image", original:"Original", gamma:"Gamma",
+    builtin_test:"Built-in test image", ready:"Ready", loading:"Loading...",
+    no_presets:"No presets found", point_info_hint:"Click a control point to see values | Double-click canvas to add | Right-click point to delete",
+    enter_preset_name:"Enter a preset name", invalid_preset:"Invalid preset", save_failed:"Save failed",
+    loaded:"Loaded", applied:"Applied to display", failed:"Failed",
+    reset_ok:"Reset to linear gamma", all:"ALL", error:"Error",
+    channel:"Channel", point:"Point"
+  }
+};
+let curLang = (navigator.language||"").startsWith("zh") ? "zh" : "en";
+function t(key) { return I18N[curLang][key] || key; }
+function setLang(lang) {
+  curLang = lang;
+  document.querySelectorAll("[data-i18n]").forEach(function(el) {
+    el.textContent = t(el.getAttribute("data-i18n"));
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach(function(el) {
+    el.placeholder = t(el.getAttribute("data-i18n-placeholder"));
+  });
+  document.getElementById("langToggle").textContent = curLang === "zh" ? "EN" : "中文";
+  document.getElementById("previewLabel").textContent = userImage && userImage._name ? userImage._name : t("builtin_test");
+  updatePointInfo();
+  drawCurves();
+  var fl = document.getElementById("fileList");
+  if (fl && (fl.textContent.indexOf("presets")>=0 || fl.textContent.indexOf("预设")>=0 || fl.textContent.indexOf("found")>=0 || fl.children.length===0)) loadFiles();
+}
+function toggleLang() { setLang(curLang === "zh" ? "en" : "zh"); }
+
+const N = 256;
+const MAX_VAL = 65535;
+function makeLinearPoints() {
+  const pts = [];
+  for (let i = 0; i <= 5; i++) {
+    const x = Math.round(i * 255 / 5);
+    pts.push({x, y: Math.round(x * MAX_VAL / 255)});
+  }
+  return pts;
+}
+let curPoints = [makeLinearPoints(), makeLinearPoints(), makeLinearPoints()];
+let draggedPoint = null;
+let visibleCh = [true, true, true];
+let linkedMode = false;
+let selectedPoint = null;
+const chColors = ['#ff4444', '#44ff44', '#4488ff'];
+
+let previewImg = null;
+let userImage = null;
+let splitDragging = false;
+
+// Build default preview test image
+function buildPreviewImage() {
+  const c = document.createElement('canvas');
+  const P = 512, Q = 256;
+  c.width = P; c.height = Q;
+  const ctx = c.getContext('2d');
+  const barH = Q / 4;
+  // Gradient bars
+  for (let x = 0; x < P; x++) {
+    const t = x / (P - 1);
+    ctx.fillStyle = `rgb(${(t*255)|0},${(t*255)|0},${(t*255)|0})`;
+    ctx.fillRect(x, 0, 1, barH);
+  }
+  // Color ramps
+  const imgData = ctx.getImageData(0, barH, P, Q - barH);
+  const d = imgData.data;
+  const rampH = Q - barH;
+  for (let y = 0; y < rampH; y++) {
+    for (let x = 0; x < P; x++) {
+      const i = (y * P + x) * 4;
+      const t = x / (P - 1);
+      const seg = Math.floor(y / (rampH / 3));
+      if (seg === 0) { d[i]=255; d[i+1]=(t*255)|0; d[i+2]=(t*255)|0; }
+      else if (seg === 1) { d[i]=(t*255)|0; d[i+1]=255; d[i+2]=(t*255)|0; }
+      else { d[i]=(t*255)|0; d[i+1]=(t*255)|0; d[i+2]=255; }
+      d[i+3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, barH);
+  ctx.fillStyle = '#fff'; ctx.font = '12px monospace';
+  ctx.fillText('Grayscale', 4, 12);
+  ctx.fillText('Red-Yellow', 4, barH + 12);
+  ctx.fillText('Green-Yellow', 4, barH + rampH / 3 + 12);
+  ctx.fillText('Blue-Yellow', 4, barH + 2 * rampH / 3 + 12);
+  previewImg = c;
+}
+
+function handleImageUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => {
+    userImage = img;
+    userImage._name = file.name; document.getElementById('previewLabel').textContent = file.name;
+    updatePreview();
+  };
+  img.src = URL.createObjectURL(file);
+}
+
+function resetPreviewImage() {
+  userImage = null;
+  userImage = null; document.getElementById('previewLabel').textContent = t('builtin_test');
+  document.getElementById('imageUpload').value = '';
+  drawCurves();
+}
+
+// Monotone Cubic Hermite spline (Fritsch-Carlson)
+function pointsToRamp(pts) {
+  const ramp = new Array(N);
+  const n = pts.length;
+  const xs = pts.map(p => p.x);
+  const ys = pts.map(p => p.y);
+
+  // Segment slopes
+  const m = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    const dx = xs[i + 1] - xs[i];
+    m[i] = dx > 0 ? (ys[i + 1] - ys[i]) / dx : 0;
+  }
+
+  // Tangents at knots (Fritsch-Carlson)
+  const d = new Array(n);
+  d[0] = m[0];
+  d[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (m[i - 1] * m[i] <= 0) {
+      d[i] = 0;
+    } else {
+      const h0 = xs[i] - xs[i - 1];
+      const h1 = xs[i + 1] - xs[i];
+      const a = (1 + h1 / (h0 + h1)) / 3;
+      d[i] = (m[i - 1] * m[i]) / (a * m[i] + (1 - a) * m[i - 1]);
+    }
+  }
+
+  // Evaluate Hermite spline
+  for (let i = 0; i < N; i++) {
+    const x = i;
+    if (x <= xs[0]) { ramp[i] = Math.round(ys[0]); continue; }
+    if (x >= xs[n - 1]) { ramp[i] = Math.round(ys[n - 1]); continue; }
+
+    let seg = 0;
+    while (seg < n - 2 && x > xs[seg + 1]) seg++;
+
+    const h = xs[seg + 1] - xs[seg];
+    const t = (x - xs[seg]) / h;
+    const t2 = t * t;
+    const t3 = t2 * t;
+
+    const y0 = ys[seg], y1 = ys[seg + 1];
+    const m0 = d[seg] * h, m1 = d[seg + 1] * h;
+
+    let v = Math.round(
+      (2 * t3 - 3 * t2 + 1) * y0 +
+      (t3 - 2 * t2 + t) * m0 +
+      (-2 * t3 + 3 * t2) * y1 +
+      (t3 - t2) * m1
+    );
+    v = Math.max(0, Math.min(MAX_VAL, v));
+    ramp[i] = v;
+  }
+  // Safety: enforce monotonic
+  for (let i = 1; i < N; i++) {
+    if (ramp[i] < ramp[i - 1]) ramp[i] = ramp[i - 1];
+  }
+  return ramp;
+}
+
+// Canvas drawing
+const curveCanvas = document.getElementById('curveCanvas');
+const curveCtx = curveCanvas.getContext('2d');
+const W = curveCanvas.width, H = curveCanvas.height;
+const margin = 20;
+const pw = W - margin * 2, ph = H - margin * 2;
+
+function drawCurves() {
+  curveCtx.clearRect(0, 0, W, H);
+  // Grid
+  curveCtx.strokeStyle = '#333'; curveCtx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = margin + ph * i / 4;
+    curveCtx.beginPath(); curveCtx.moveTo(margin, y); curveCtx.lineTo(W - margin, y); curveCtx.stroke();
+    const x = margin + pw * i / 4;
+    curveCtx.beginPath(); curveCtx.moveTo(x, margin); curveCtx.lineTo(x, H - margin); curveCtx.stroke();
+  }
+
+  for (let ch = 0; ch < 3; ch++) {
+    if (!visibleCh[ch]) continue;
+    const ramp = pointsToRamp(curPoints[ch]);
+    curveCtx.strokeStyle = chColors[ch];
+    curveCtx.lineWidth = 2;
+    curveCtx.beginPath();
+    for (let i = 0; i < N; i++) {
+      const x = margin + pw * i / (N - 1);
+      const y = margin + ph - ph * (ramp[i] / MAX_VAL);
+      if (i === 0) curveCtx.moveTo(x, y); else curveCtx.lineTo(x, y);
+    }
+    curveCtx.stroke();
+
+    // Control points
+    for (let k = 0; k < curPoints[ch].length; k++) {
+      const pt = curPoints[ch][k];
+      const px = margin + pw * pt.x / 255;
+      const py = margin + ph - ph * pt.y / MAX_VAL;
+      const sel = selectedPoint && selectedPoint.ch === ch && selectedPoint.idx === k;
+      curveCtx.fillStyle = sel ? '#fff' : chColors[ch];
+      curveCtx.beginPath(); curveCtx.arc(px, py, sel ? 7 : 5, 0, Math.PI * 2); curveCtx.fill();
+      curveCtx.strokeStyle = sel ? chColors[ch] : '#fff';
+      curveCtx.lineWidth = sel ? 3 : 2;
+      curveCtx.beginPath(); curveCtx.arc(px, py, sel ? 7 : 5, 0, Math.PI * 2); curveCtx.stroke();
+      curveCtx.lineWidth = 2;
+    }
+  }
+
+  updatePreview();
+  updatePointInfo();
+}
+
+function getSplitX(w) {
+  return Math.round(w * parseInt(document.getElementById('compareSlider').value) / 100);
+}
+
+function updatePreview() {
+  const canvas = document.getElementById('previewCanvas');
+  const wrap = canvas.parentElement;
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (w <= 0 || h <= 0) return;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  // Build gamma LUTs
+  const rRamp = pointsToRamp(curPoints[0]);
+  const gRamp = pointsToRamp(curPoints[1]);
+  const bRamp = pointsToRamp(curPoints[2]);
+  const lutR = new Uint8Array(256);
+  const lutG = new Uint8Array(256);
+  const lutB = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const idx = Math.round(i * (N - 1) / 255);
+    lutR[i] = Math.round(rRamp[idx] / MAX_VAL * 255);
+    lutG[i] = Math.round(gRamp[idx] / MAX_VAL * 255);
+    lutB[i] = Math.round(bRamp[idx] / MAX_VAL * 255);
+  }
+
+  function applyLUT(imgData) {
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      d[i] = lutR[d[i]];
+      d[i + 1] = lutG[d[i + 1]];
+      d[i + 2] = lutB[d[i + 2]];
+    }
+  }
+
+  const srcImg = userImage || previewImg;
+  if (!srcImg) return;
+
+  const scale = Math.min(w / srcImg.width, h / srcImg.height);
+  const sw = srcImg.width * scale, sh = srcImg.height * scale;
+  const sx = (w - sw) / 2, sy = (h - sh) / 2;
+
+  // Draw original image
+  ctx.drawImage(srcImg, sx, sy, sw, sh);
+  const origData = ctx.getImageData(0, 0, w, h);
+
+  // Draw gamma-applied image into an offscreen canvas
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const offCtx = off.getContext('2d');
+  offCtx.drawImage(srcImg, sx, sy, sw, sh);
+  const gammaData = offCtx.getImageData(0, 0, w, h);
+  applyLUT(gammaData);
+
+  // Split compositing
+  const splitX = getSplitX(w);
+  const outData = ctx.getImageData(0, 0, w, h);
+  const o = origData.data, g = gammaData.data, out = outData.data;
+  for (let i = 0; i < out.length; i += 4) {
+    const px = (i / 4) % w;
+    if (px < splitX) {
+      out[i] = o[i]; out[i+1] = o[i+1]; out[i+2] = o[i+2];
+    } else {
+      out[i] = g[i]; out[i+1] = g[i+1]; out[i+2] = g[i+2];
+    }
+    out[i+3] = 255;
+  }
+  ctx.putImageData(outData, 0, 0);
+
+  // Divider line
+  const split = parseInt(document.getElementById('compareSlider').value) / 100;
+  if (split > 0 && split < 1) {
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(splitX, 0); ctx.lineTo(splitX, h); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function updatePointInfo() {
+  const div = document.getElementById('pointInfo');
+  const dp = draggedPoint || selectedPoint;
+  if (!dp) { div.textContent = t('point_info_hint'); return; }
+  const ch = dp.ch;
+  const idx = dp.idx;
+  const pt = curPoints[ch][idx];
+  div.innerHTML = t('channel')+': <span style="color:'+chColors[ch]+'">'+['R','G','B'][ch]+'</span> '+t('point')+' '+idx+' X='+pt.x+' Y='+pt.y+' ('+(pt.y/MAX_VAL*100).toFixed(1)+'%)';
+}
+
+function addPoint() {
+  if (!selectedPoint) return;
+  const ch = selectedPoint.ch;
+  const idx = selectedPoint.idx;
+  if (idx >= curPoints[ch].length - 1) return;
+  const p0 = curPoints[ch][idx];
+  const p1 = curPoints[ch][idx + 1];
+  if (p1.x - p0.x < 2) return;
+  const newPt = { x: Math.round((p0.x + p1.x) / 2), y: Math.round((p0.y + p1.y) / 2) };
+  curPoints[ch].splice(idx + 1, 0, newPt);
+  if (linkedMode) {
+    const dy = newPt.y - p0.y;
+    const dx = newPt.x - p0.x;
+    for (let c = 0; c < 3; c++) {
+      if (c === ch) continue;
+      const q0 = curPoints[c][idx];
+      const q1 = curPoints[c][idx + 1];
+      const ny = Math.round(q0.y + (q1.y - q0.y) * dy / (p1.y - p0.y || 1));
+      curPoints[c].splice(idx + 1, 0, { x: newPt.x, y: Math.max(0, Math.min(MAX_VAL, ny)) });
+    }
+  }
+  selectedPoint.idx = idx + 1;
+  drawCurves();
+}
+
+function deletePoint() {
+  if (!selectedPoint) return;
+  const ch = selectedPoint.ch;
+  const idx = selectedPoint.idx;
+  // Keep at least 2 points
+  if (curPoints[ch].length <= 2) return;
+  // Keep endpoints
+  if (idx === 0 || idx === curPoints[ch].length - 1) return;
+  curPoints[ch].splice(idx, 1);
+  if (linkedMode) {
+    for (let c = 0; c < 3; c++) {
+      if (c === ch) continue;
+      if (curPoints[c].length > 2) curPoints[c].splice(idx, 1);
+    }
+  }
+  selectedPoint = null;
+  drawCurves();
+}
+
+function loadIdentity() {
+  const pts = makeLinearPoints();
+  for (let ch = 0; ch < 3; ch++) curPoints[ch] = pts.map(p => ({...p}));
+  drawCurves();
+}
+
+// Mouse handling
+function hitTest(mx, my) {
+  let best = null, bestDist = 16;
+  for (let ch = 0; ch < 3; ch++) {
+    if (!visibleCh[ch]) continue;
+    for (let i = 0; i < curPoints[ch].length; i++) {
+      const pt = curPoints[ch][i];
+      const px = margin + pw * pt.x / 255;
+      const py = margin + ph - ph * pt.y / MAX_VAL;
+      const dist = Math.hypot(mx - px, my - py);
+      if (dist < bestDist) { bestDist = dist; best = { ch, idx: i }; }
+    }
+  }
+  return best;
+}
+
+curveCanvas.addEventListener('mousedown', (e) => {
+  const rect = curveCanvas.getBoundingClientRect();
+  const sx = W / rect.width, sy = H / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  const hit = hitTest(mx, my);
+  if (hit) {
+    draggedPoint = hit;
+    selectedPoint = hit;
+    e.preventDefault();
+    updatePointInfo();
+  } else {
+    selectedPoint = null;
+    updatePointInfo();
+  }
+});
+
+curveCanvas.addEventListener('mousemove', (e) => {
+  if (!draggedPoint) return;
+  const rect = curveCanvas.getBoundingClientRect();
+  const sx = W / rect.width, sy = H / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+
+  let nx = Math.round((mx - margin) / pw * 255);
+  let ny = Math.round((margin + ph - my) / ph * MAX_VAL);
+  nx = Math.max(0, Math.min(255, nx));
+  ny = Math.max(0, Math.min(MAX_VAL, ny));
+
+  const ch = draggedPoint.ch;
+  const idx = draggedPoint.idx;
+
+  // Keep x monotonic
+  if (idx > 0 && nx <= curPoints[ch][idx - 1].x) nx = curPoints[ch][idx - 1].x + 1;
+  if (idx < curPoints[ch].length - 1 && nx >= curPoints[ch][idx + 1].x) nx = curPoints[ch][idx + 1].x - 1;
+
+  const dx = nx - curPoints[ch][idx].x;
+  const dy = ny - curPoints[ch][idx].y;
+
+  curPoints[ch][idx].x = nx;
+  curPoints[ch][idx].y = ny;
+
+  // Linked mode: move other channels proportionally
+  if (linkedMode) {
+    for (let c = 0; c < 3; c++) {
+      if (c === ch) continue;
+      const pt = curPoints[c][idx];
+      if (idx > 0 && pt.x + dx <= curPoints[c][idx - 1].x) continue;
+      if (idx < curPoints[c].length - 1 && pt.x + dx >= curPoints[c][idx + 1].x) continue;
+      pt.x += dx;
+      pt.y = Math.max(0, Math.min(MAX_VAL, pt.y + dy));
+    }
+  }
+  drawCurves();
+});
+
+curveCanvas.addEventListener('mouseup', () => { draggedPoint = null; });
+curveCanvas.addEventListener('mouseleave', () => { draggedPoint = null; });
+
+// Double-click to add point on curve
+curveCanvas.addEventListener('dblclick', (e) => {
+  const rect = curveCanvas.getBoundingClientRect();
+  const sx = W / rect.width, sy = H / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  let nx = Math.round((mx - margin) / pw * 255);
+  let ny = Math.round((margin + ph - my) / ph * MAX_VAL);
+  nx = Math.max(1, Math.min(254, nx));
+  ny = Math.max(0, Math.min(MAX_VAL, ny));
+  // Find insertion position
+  const ch = visibleCh.indexOf(true);
+  if (ch < 0) return;
+  let ins = curPoints[ch].length - 1;
+  for (let i = 0; i < curPoints[ch].length - 1; i++) {
+    if (nx > curPoints[ch][i].x && nx < curPoints[ch][i + 1].x) { ins = i + 1; break; }
+  }
+  if (linkedMode) {
+    for (let c = 0; c < 3; c++) {
+      curPoints[c].splice(ins, 0, { x: nx, y: ny });
+    }
+  } else {
+    for (let c = 0; c < 3; c++) {
+      if (!visibleCh[c]) continue;
+      // Interpolate y from the ramp for this channel
+      const ramp = pointsToRamp(curPoints[c]);
+      const iy = ramp[Math.round(nx * (N - 1) / 255)];
+      curPoints[c].splice(ins, 0, { x: nx, y: iy });
+    }
+  }
+  selectedPoint = { ch: visibleCh.indexOf(true), idx: ins };
+  drawCurves();
+});
+
+// Right-click to delete point
+curveCanvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const rect = curveCanvas.getBoundingClientRect();
+  const sx = W / rect.width, sy = H / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  const hit = hitTest(mx, my);
+  if (!hit) return;
+  const ch = hit.ch;
+  const idx = hit.idx;
+  if (curPoints[ch].length <= 2) return;
+  if (idx === 0 || idx === curPoints[ch].length - 1) return;
+  selectedPoint = { ch, idx };
+  deletePoint();
+});
+
+// Channel toggles
+document.querySelectorAll('.ch-toggle').forEach(cb => {
+  cb.addEventListener('change', () => {
+    visibleCh[0] = document.querySelector('.ch-toggle[data-ch="0"]').checked;
+    visibleCh[1] = document.querySelector('.ch-toggle[data-ch="1"]').checked;
+    visibleCh[2] = document.querySelector('.ch-toggle[data-ch="2"]').checked;
+    drawCurves();
+  });
+});
+
+// API calls
+async function api(url, opts = {}) {
+  const r = await fetch(url, opts);
+  return r.json();
+}
+
+async function loadDisplays() {
+  try {
+    const data = await api('/api/displays');
+    const sel = document.getElementById('displaySelect');
+    sel.innerHTML = '<option value="0">All Displays</option>';
+    if (data.displays) {
+      data.displays.forEach((d, i) => {
+        sel.innerHTML += `<option value="${i + 1}">${d.name}</option>`;
+      });
+    }
+  } catch(e) { console.error(e); }
+}
+
+async function loadFiles() {
+  try {
+    const data = await api('/api/files');
+    const div = document.getElementById('fileList');
+    if (!data.files || data.files.length === 0) {
+      div.innerHTML = '<div style="font-size:11px;color:#666">'+t('no_presets')+'</div>';
+      return;
+    }
+    div.innerHTML = data.files.map(f =>
+      `<div class="file" onclick="loadFile('${f}')">${f}</div>`
+    ).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function loadFile(name) {
+  try {
+    const data = await api('/api/presets/' + encodeURIComponent(name));
+    if (!data.points) { setStatus(t('invalid_preset'), true); return; }
+    const keys = ['r','g','b'];
+    for (let ch = 0; ch < 3; ch++) {
+      curPoints[ch] = data.points[keys[ch]].map(pt => ({ x: pt[0], y: pt[1] }));
+    }
+    drawCurves();
+    document.querySelectorAll('.file').forEach(el => el.classList.remove('selected'));
+    event.target.classList.add('selected');
+    setStatus(t('loaded')+': '+name);
+  } catch(e) { console.error(e); }
+}
+
+async function applyGamma() {
+  const displayIdx = parseInt(document.getElementById('displaySelect').value);
+  const ramp = {
+    red: pointsToRamp(curPoints[0]),
+    green: pointsToRamp(curPoints[1]),
+    blue: pointsToRamp(curPoints[2]),
+  };
+  try {
+    const data = await api('/api/gamma/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display: displayIdx, ramp }),
+    });
+    setStatus(data.ok ? t('applied')+' '+(displayIdx||t('all')) : t('failed')+': '+(data.error||'unknown'), !data.ok);
+  } catch(e) { setStatus(t('error')+': '+e.message, true); }
+}
+
+async function resetGamma() {
+  const displayIdx = parseInt(document.getElementById('displaySelect').value);
+  try {
+    const data = await api('/api/gamma/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ display: displayIdx }),
+    });
+    setStatus(data.ok ? t('reset_ok') : t('failed')+': '+(data.error||'unknown'), !data.ok);
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+async function savePreset() {
+  let name = document.getElementById('presetName').value.trim();
+  if (!name) { setStatus(t('enter_preset_name'), true); return; }
+  if (!name.endsWith('.gmd')) name += '.gmd';
+  const points = {};
+  ['r','g','b'].forEach((k, ch) => {
+    points[k] = curPoints[ch].map(p => [p.x, p.y]);
+  });
+  try {
+    const data = await api('/api/presets/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, points }),
+    });
+    setStatus(data.ok ? t('loaded')+': '+name : t('failed')+': '+(data.error||'unknown'), !data.ok);
+    if (data.ok) loadFiles();
+  } catch(e) { setStatus('Error: ' + e.message, true); }
+}
+
+function setStatus(msg, isErr) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = isErr ? 'err' : 'ok';
+  if (!isErr) setTimeout(function() { el.textContent = t('ready'); el.className = ''; }, 3000);
+}
+
+// Init
+document.getElementById('linkRGB').addEventListener('change', function() {
+  linkedMode = this.checked;
+  document.querySelectorAll('.ch-toggle[data-ch]').forEach(cb => {
+    cb.disabled = linkedMode;
+    if (linkedMode) cb.checked = true;
+  });
+  if (linkedMode) { visibleCh = [true, true, true]; drawCurves(); }
+});
+
+// Resize preview canvas on window resize
+window.addEventListener('resize', () => updatePreview());
+
+// Split-line drag on preview canvas
+const previewCanvas = document.getElementById('previewCanvas');
+previewCanvas.addEventListener('mousedown', (e) => {
+  const w = previewCanvas.clientWidth;
+  const splitX = getSplitX(w);
+  const mx = e.clientX - previewCanvas.getBoundingClientRect().left;
+  if (Math.abs(mx - splitX) < 12) { splitDragging = true; e.preventDefault(); }
+});
+previewCanvas.addEventListener('mousemove', (e) => {
+  const w = previewCanvas.clientWidth;
+  const splitX = getSplitX(w);
+  const mx = e.clientX - previewCanvas.getBoundingClientRect().left;
+  if (splitDragging) {
+    document.getElementById('compareSlider').value = Math.round(mx / w * 100);
+    updatePreview();
+  } else {
+    previewCanvas.style.cursor = Math.abs(mx - splitX) < 12 ? 'ew-resize' : 'default';
+  }
+});
+window.addEventListener('mouseup', () => { splitDragging = false; });
+
+setLang(curLang);
+buildPreviewImage();
+loadDisplays();
+loadFiles();
+drawCurves();
+</script>
+</body>
+</html>

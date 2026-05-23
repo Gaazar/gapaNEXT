@@ -12,9 +12,9 @@
         "program": "${workspaceFolder}/build/gapaNEXT.exe",
         "args": [],
         "stopAtEntry": false,
-        "cwd": "${fileDirname}",
+        "cwd": "${workspaceFolder}",
         "environment": [],
-        "console": "internalConsole"
+        "console": "externalTerminal"
     }
     ]
 }
