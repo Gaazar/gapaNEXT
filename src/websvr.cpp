@@ -109,9 +109,10 @@ static std::optional<gamma_ramp> JsonToRamp(const crow::json::rvalue& j)
 
 // ----- Web server -----
 crow::SimpleApp app;
-void OpenWebUI()
+void OpenWebUI(int port)
 {
-    std::string url = "http://localhost:" + std::to_string(app.port());
+    if (port == 0) port = app.port();
+    std::string url = "http://localhost:" + std::to_string(port);
     ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 }
 void StopWebServer()
@@ -441,5 +442,10 @@ void RunWebServer(int port)
 
     std::cout << "gapaNEXT web server starting on http://localhost:" << port << std::endl;
     std::cout << "Press Ctrl+C to stop." << std::endl;
+
+#ifndef GAPA_REPL
+    std::string url = "http://localhost:" + std::to_string(port);
+    ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+#endif
     app.port(port).multithreaded().run();
 }
