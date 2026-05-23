@@ -27,7 +27,12 @@ add_executable(gapaNEXT
 	"src/gamma.cpp"
 	"src/gamma.h"
 )
-
+add_custom_target(webui ALL
+	COMMAND npm install
+	COMMAND npm run build
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/webui
+	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/webui/build ${CMAKE_SOURCE_DIR}/dist
+)
 # GDI32: SetDeviceGammaRamp / GetDeviceGammaRamp
 target_link_libraries(gapaNEXT gdi32.lib Crow)
 

@@ -1,0 +1,150 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #0c1014;
+  color: #cdd6e0;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.panel {
+  width: 420px;
+  min-width: 420px;
+  background: #11171d;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  border-right: 1px solid #1e293b;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.section {
+  background: #181e26;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+h2 {
+  font-size: 14px;
+  color: #00d4ff;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn:active {
+  transform: scale(0.96);
+}
+
+.btn-apply {
+  background: #00d4ff;
+  color: #0c1014;
+}
+
+.btn-reset {
+  background: #7c4dff;
+  color: #fff;
+}
+
+.btn-save {
+  background: #181e26;
+  color: #cdd6e0;
+  border: 1px solid #00d4ff;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+select {
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #0c1014;
+  color: #cdd6e0;
+  border: 1px solid #1e293b;
+  font-size: 13px;
+}
+
+input[type="text"] {
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: #0c1014;
+  color: #cdd6e0;
+  border: 1px solid #1e293b;
+  font-size: 13px;
+  flex: 1;
+  min-width: 120px;
+}
+
+input[type="range"] {
+  accent-color: #00d4ff;
+}
+
+.file-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.file-item {
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.file-item:hover {
+  background: #11171d;
+  color: #00d4ff;
+}
+
+.file-item.selected {
+  background: #00d4ff;
+  color: #0c1014;
+}
+
+.status {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.status.ok {
+  color: #4ade80;
+}
+
+.status.err {
+  color: #ff5252;
+}

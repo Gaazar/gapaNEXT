@@ -366,3 +366,4 @@ build/
 out/
 .claude/
 .vscode/
+dist/

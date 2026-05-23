@@ -1,0 +1,1 @@
+{"keybindings":[{"action":"reset_all","key":["shift","alt","f12"]},{"action":"reset_display","key":["f12"],"display":[0]},{"action":"apply_preset","display":[0],"key":["alt","f11"],"preset":"shadowboost.gmd"}]}

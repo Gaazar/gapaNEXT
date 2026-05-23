@@ -46,6 +46,19 @@ input[type=text] { padding: 6px 10px; border-radius: 4px; background: #1a1a2e; c
 .control-row { display: flex; gap: 8px; align-items: center; font-size: 11px; }
 .control-row input[type=range] { flex: 1; accent-color: #e94560; }
 .control-row span { min-width: 50px; text-align: right; font-family: monospace; }
+
+#keybindingList { max-height: 200px; overflow-y: auto; font-size: 11px; }
+#keybindingList .kb-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+#keybindingList .kb-row:hover { background: #16213e; }
+#keybindingList .kb-row .kb-act { color: #e94560; min-width: 80px; font-weight: 600; }
+#keybindingList .kb-row .kb-key { background: #1a1a2e; padding: 2px 6px; border-radius: 3px; font-family: monospace; font-size: 10px; }
+#keybindingList .kb-row .kb-del { margin-left: auto; color: #e94560; cursor: pointer; font-weight: bold; padding: 0 4px; }
+#keybindingList .kb-row .kb-del:hover { color: #ff6680; }
+.kb-edit { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; font-size: 11px; margin-top: 4px; }
+.kb-edit select, .kb-edit input[type=text] { font-size: 11px; padding: 3px 6px; min-width: auto; flex: 1; }
+.kb-mod { display: flex; gap: 4px; align-items: center; }
+.kb-mod label { font-size: 10px; display: flex; align-items: center; gap: 2px; }
+.kb-mod input { accent-color: #e94560; }
 </style>
 </head>
 <body>
@@ -96,7 +109,12 @@ input[type=text] { padding: 6px 10px; border-radius: 4px; background: #1a1a2e; c
 
 <div id="main">
   <div class="section">
-    <h2 data-i18n="gamma_preview">Gamma Preview</h2>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn btn-sm" id="tabPreview" onclick="switchTab('preview')" style="background:#e94560;color:#fff;border:none">Preview</button>
+      <button class="btn btn-sm" id="tabKeybindings" onclick="switchTab('keybindings')" style="background:transparent;color:#888;border:1px solid #888">Keybindings</button>
+    </div>
+    <div id="tabContent-preview" style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+      <h2 data-i18n="gamma_preview">Gamma Preview</h2>
     <div class="row" style="margin-bottom:6px">
       <button class="btn btn-sm btn-save" onclick="document.getElementById('imageUpload').click()" data-i18n="upload_image">Upload Image</button>
       <button class="btn btn-sm btn-reset" onclick="resetPreviewImage()" data-i18n="reset_image">Reset Image</button>
@@ -110,6 +128,22 @@ input[type=text] { padding: 6px 10px; border-radius: 4px; background: #1a1a2e; c
     </div>
     <div class="preview-wrap">
       <canvas id="previewCanvas"></canvas>
+    </div>
+    </div>
+    <div id="tabContent-keybindings" style="display:none;flex:1;overflow-y:auto;padding-top:8px">
+      <h2>Keybindings</h2>
+      <div id="keybindingList" style="margin-top:8px"></div>
+      <div class="kb-edit" style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px">
+        <select id="kbAction" style="flex:1;min-width:100px">
+          <option value="apply_preset">Apply Preset</option>
+          <option value="reset_display">Reset Display</option>
+          <option value="reset_all">Reset All</option>
+        </select>
+        <select id="kbPreset" style="flex:1;min-width:100px;display:none"><option value="">-- preset --</option></select>
+        <select id="kbDisplay" style="flex:1;min-width:100px"><option value="0">All Displays</option></select>
+        <input type="text" id="kbKey" placeholder="click then press keys" readonly style="min-width:100px;width:140px" onclick="captureKey(this)">
+        <button class="btn btn-sm btn-save" onclick="addKeybinding()">+</button>
+      </div>
     </div>
   </div>
 </div>
@@ -157,6 +191,10 @@ function setLang(lang) {
   drawCurves();
   var fl = document.getElementById("fileList");
   if (fl && (fl.textContent.indexOf("presets")>=0 || fl.textContent.indexOf("预设")>=0 || fl.textContent.indexOf("found")>=0 || fl.children.length===0)) loadFiles();
+  loadKbDisplays();
+  loadKbPresets();
+  updateKbLabels();
+  renderKeybindings();
 }
 function toggleLang() { setLang(curLang === "zh" ? "en" : "zh"); }
 
@@ -762,10 +800,170 @@ previewCanvas.addEventListener('mousemove', (e) => {
 });
 window.addEventListener('mouseup', () => { splitDragging = false; });
 
+
+// ----- Keybindings -----
+let keybindings = [];
+let kbCaptureTarget = null;
+let kbMods = [];
+
+const KB_ACTION_LABELS = {
+  apply_preset: 'Apply Preset',
+  reset_display: 'Reset Display',
+  reset_all: 'Reset All'
+};
+
+function updateKbLabels() {
+  if (curLang === 'zh') {
+    KB_ACTION_LABELS.apply_preset = '应用预设';
+    KB_ACTION_LABELS.reset_display = '重置显示器';
+    KB_ACTION_LABELS.reset_all = '重置全部';
+  } else {
+    KB_ACTION_LABELS.apply_preset = 'Apply Preset';
+    KB_ACTION_LABELS.reset_display = 'Reset Display';
+    KB_ACTION_LABELS.reset_all = 'Reset All';
+  }
+}
+
+function switchTab(tab) {
+  var p = document.getElementById('tabContent-preview');
+  var k = document.getElementById('tabContent-keybindings');
+  var tp = document.getElementById('tabPreview');
+  var tk = document.getElementById('tabKeybindings');
+  p.style.display = tab === 'preview' ? 'flex' : 'none';
+  k.style.display = tab === 'keybindings' ? 'flex' : 'none';
+  var active = {background:'#e94560',color:'#fff',border:'none'};
+  var inactive = {background:'transparent',color:'#888',border:'1px solid #888'};
+  Object.assign(tp.style, tab==='preview'?active:inactive);
+  Object.assign(tk.style, tab==='keybindings'?active:inactive);
+  if (tab === 'preview') updatePreview();
+}
+
+function captureKey(input) {
+  input.value = curLang==='zh'?'按下组合键...':'press combo...';
+  input.style.background = '#e94560';
+  kbMods = [];
+  kbCaptureTarget = input;
+}
+
+document.addEventListener('keydown', function(e) {
+  if (!kbCaptureTarget) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === 'Control' || e.key === 'Alt' || e.key === 'Shift') {
+    var name = e.key.toLowerCase();
+    if (kbMods.indexOf(name) < 0) kbMods.push(name);
+    kbCaptureTarget.value = kbMods.join('+') + '+...';
+    return;
+  }
+  if (e.key === 'Meta' || e.key === 'Escape') return;
+  if (kbMods.indexOf(e.key.toLowerCase()) < 0)
+    kbMods.push(e.key.toLowerCase());
+  kbCaptureTarget.value = kbMods.join('+');
+  kbCaptureTarget.style.background = '#1a1a2e';
+  kbCaptureTarget = null;
+});
+
+async function loadKbDisplays() {
+  try {
+    var data = await api('/api/displays');
+    var sel = document.getElementById('kbDisplay');
+    sel.innerHTML = '<option value="0">' + (curLang==='zh'?'全部显示器':'All Displays') + '</option>';
+    if (data.displays) {
+      data.displays.forEach(function(d, i) {
+        sel.innerHTML += '<option value="' + (i + 1) + '">' + d.name + '</option>';
+      });
+    }
+  } catch(e) {}
+}
+
+async function loadKbPresets() {
+  try {
+    var data = await api('/api/files');
+    var sel = document.getElementById('kbPreset');
+    sel.innerHTML = '<option value="">-- ' + (curLang==='zh'?'选择预设':'select preset') + ' --</option>';
+    if (data.files) {
+      data.files.forEach(function(f) {
+        sel.innerHTML += '<option value="' + f + '">' + f + '</option>';
+      });
+    }
+  } catch(e) {}
+}
+
+async function loadKeybindings() {
+  try {
+    var data = await api('/api/keybindings');
+    keybindings = data.keybindings || [];
+  } catch(e) { console.error(e); keybindings = []; }
+  renderKeybindings();
+}
+
+function renderKeybindings() {
+  var div = document.getElementById('keybindingList');
+  if (!div) return;
+  if (!keybindings || !keybindings.length) {
+    div.innerHTML = '<div style="font-size:11px;color:#666">' +
+      (typeof curLang!=='undefined' && curLang==='zh'?'没有快捷键':'No keybindings') + '</div>';
+    return;
+  }
+  div.innerHTML = keybindings.map(function(kb, i) {
+    var info = (KB_ACTION_LABELS[kb.action] || kb.action);
+    if (kb.preset) info += ' - ' + kb.preset;
+    if (kb.display && kb.display[0] !== 0) info += ' @D' + kb.display.join(',');
+    return '<div class="kb-row">' +
+      '<span class="kb-act">' + info + '</span>' +
+      '<span class="kb-key">' + (kb.key||[]).join('+') + '</span>' +
+      '<span class="kb-del" onclick="deleteKeybinding('+i+')">&times;</span>' +
+      '</div>';
+  }).join('');
+}
+
+document.getElementById('kbAction').addEventListener('change', function() {
+  document.getElementById('kbPreset').style.display =
+    this.value === 'apply_preset' ? '' : 'none';
+});
+
+function addKeybinding() {
+  var act = document.getElementById('kbAction').value;
+  var presetSel = document.getElementById('kbPreset');
+  var preset = presetSel.options[presetSel.selectedIndex] ? presetSel.value : '';
+  var display = parseInt(document.getElementById('kbDisplay').value) || 0;
+  var keyStr = document.getElementById('kbKey').value.trim();
+  if (!keyStr || keyStr === 'press key...') return;
+  var entry = { action: act, key: keyStr.split('+').map(function(s){return s.trim()}) };
+  if (act === 'apply_preset' && preset) entry.preset = preset;
+  if (act === 'apply_preset' && !preset) return;
+  entry.display = [display];
+  keybindings.push(entry);
+  document.getElementById('kbKey').value = '';
+  
+  renderKeybindings();
+  saveKeybindings();
+}
+
+function deleteKeybinding(idx) {
+  keybindings.splice(idx, 1);
+  renderKeybindings();
+  saveKeybindings();
+}
+
+async function saveKeybindings() {
+  try {
+    await api('/api/keybindings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keybindings: keybindings })
+    });
+  } catch(e) { console.error(e); }
+}
+
 setLang(curLang);
 buildPreviewImage();
 loadDisplays();
 loadFiles();
+loadKeybindings();
+loadKbDisplays();
+loadKbPresets();
+updateKbLabels();
 drawCurves();
 </script>
 </body>

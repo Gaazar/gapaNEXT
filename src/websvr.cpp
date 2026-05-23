@@ -22,6 +22,33 @@ static std::string ReadFileStr(const std::string& path)
     return ss.str();
 }
 
+static std::string GetMimeType(const std::string& path)
+{
+    if (path.ends_with(".html") || path.ends_with(".htm"))
+        return "text/html; charset=utf-8";
+    if (path.ends_with(".js"))
+        return "application/javascript";
+    if (path.ends_with(".css"))
+        return "text/css";
+    if (path.ends_with(".json"))
+        return "application/json";
+    if (path.ends_with(".svg"))
+        return "image/svg+xml";
+    if (path.ends_with(".png"))
+        return "image/png";
+    if (path.ends_with(".jpg") || path.ends_with(".jpeg"))
+        return "image/jpeg";
+    if (path.ends_with(".ico"))
+        return "image/x-icon";
+    if (path.ends_with(".woff"))
+        return "font/woff";
+    if (path.ends_with(".woff2"))
+        return "font/woff2";
+    if (path.ends_with(".txt"))
+        return "text/plain; charset=utf-8";
+    return "application/octet-stream";
+}
+
 static crow::json::wvalue RampToJson(const gamma_ramp& ramp)
 {
     std::vector<int> r(GAMMA_RAMP_SIZE), g(GAMMA_RAMP_SIZE), b(GAMMA_RAMP_SIZE);
@@ -83,18 +110,39 @@ static std::optional<gamma_ramp> JsonToRamp(const crow::json::rvalue& j)
 void RunWebServer(int port)
 {
     crow::SimpleApp app;
-    std::string webRoot = "webui";
+    std::string webRoot = "dist";
 
-    // Serve index.html
-    CROW_ROUTE(app, "/")
+    // Serve static files from dist/ with SPA fallback
+    CROW_CATCHALL_ROUTE(app)
     (
-        [webRoot]()
+        [webRoot](const crow::request& req, crow::response& res)
         {
-            std::string html = ReadFileStr(webRoot + "/index.html");
-            crow::response r;
-            r.set_header("Content-Type", "text/html; charset=utf-8");
-            r.write(html);
-            return r;
+            // Router sets res.code = 404 before calling catchall; override it
+            res.code = 200;
+
+            std::string path = req.url;
+            // Strip query string
+            auto pos = path.find('?');
+            if (pos != std::string::npos)
+                path = path.substr(0, pos);
+            // Sanitize: prevent directory traversal
+            if (path.find("..") != std::string::npos)
+            {
+                res.code = 403;
+                return;
+            }
+
+            std::string filePath = webRoot + path;
+            if (fs::exists(filePath) && fs::is_regular_file(filePath))
+            {
+                res.set_header("Content-Type", GetMimeType(path));
+                res.write(ReadFileStr(filePath));
+                return;
+            }
+
+            // SPA fallback: serve index.html for any unmatched route
+            res.set_header("Content-Type", "text/html; charset=utf-8");
+            res.write(ReadFileStr(webRoot + "/index.html"));
         });
 
     // API: list displays
@@ -325,6 +373,52 @@ void RunWebServer(int port)
                 j["ok"] = ok;
                 if (!ok)
                     j["error"] = "save failed";
+                return j;
+            });
+
+    // API: get keybindings
+    CROW_ROUTE(app, "/api/keybindings")
+    (
+        []()
+        {
+            fs::path path = fs::current_path() / "gapa.json";
+            std::string content = ReadFileStr(path.string());
+            if (content.empty())
+            {
+                crow::json::wvalue j;
+                j["keybindings"] = std::vector<crow::json::wvalue>();
+                return j;
+            }
+            auto json = crow::json::load(content);
+            if (!json) return crow::json::wvalue();
+            return crow::json::wvalue(json);
+        });
+
+    // API: save keybindings
+    CROW_ROUTE(app, "/api/keybindings")
+        .methods("POST"_method)(
+            [](const crow::request& req)
+            {
+                auto body = crow::json::load(req.body);
+                if (!body)
+                {
+                    crow::json::wvalue e;
+                    e["ok"] = false;
+                    e["error"] = "invalid json";
+                    return e;
+                }
+                fs::path path = fs::current_path() / "gapa.json";
+                std::ofstream f(path);
+                if (!f)
+                {
+                    crow::json::wvalue e;
+                    e["ok"] = false;
+                    e["error"] = "cannot write";
+                    return e;
+                }
+                f << req.body;
+                crow::json::wvalue j;
+                j["ok"] = f.good();
                 return j;
             });
 
