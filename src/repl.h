@@ -5,3 +5,4 @@
 #include <wingdi.h>
 
 void RequestQuit();
+void RunREPL();

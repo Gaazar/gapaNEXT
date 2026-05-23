@@ -1,6 +1,7 @@
 #include "tray.h"
 #include "gamma.h"
 #include "repl.h"
+#include "resource.h"
 
 #include <windows.h>
 #include <shellapi.h>
@@ -10,9 +11,6 @@
 #include <vector>
 #include <map>
 #include <iostream>
-#include <filesystem>
-
-namespace fs = std::filesystem;
 
 #define IDM_RESET_ALL 1001
 #define IDM_RESET_DISP 2000  // + idx into s_displayIndices
@@ -74,24 +72,9 @@ const wchar_t* Tr(const char* key)
 // ---- tray icon ----
 HICON LoadTrayIcon()
 {
-    WCHAR buf[MAX_PATH];
-    GetModuleFileNameW(NULL, buf, MAX_PATH);
-    fs::path exeDir = fs::path(buf).parent_path();
-
-    std::wstring paths[] = {
-        L"tray.ico",
-        L"src/tray.ico",
-        (exeDir / L"tray.ico").wstring(),
-        (exeDir / L".." / L"src" / L"tray.ico").wstring(),
-    };
-
-    for (auto& p : paths)
-    {
-        HICON h = (HICON)LoadImageW(NULL, p.c_str(), IMAGE_ICON, 0, 0, LR_LOADFROMFILE);
-        if (h)
-            return h;
-    }
-    return LoadIcon(NULL, IDI_APPLICATION);
+    HICON h = (HICON)LoadImageW(GetModuleHandleW(NULL), MAKEINTRESOURCEW(IDI_TRAYICON),
+                                 IMAGE_ICON, 0, 0, 0);
+    return h ? h : LoadIcon(NULL, IDI_APPLICATION);
 }
 
 void AddTrayIcon(HWND hwnd)

@@ -9,14 +9,18 @@
 #include <atomic>
 
 // ----- Quit signalling -----
-static std::atomic<bool> s_quitRequested{ false };
+static std::atomic<bool> s_quitRequested{false};
 static HANDLE s_hMainThread = NULL;
 
 void RequestQuit()
 {
     s_quitRequested = true;
+#ifdef GAPA_REPL
     if (s_hMainThread)
         CancelSynchronousIo(s_hMainThread);
+#else
+    StopWebServer();
+#endif
 }
 
 // ----- Helpers -----
@@ -164,14 +168,6 @@ static void CmdHelp()
     std::cout << std::endl;
 }
 
-static void SafeShutdown()
-{
-    std::cout << "Shutting down safely... ";
-    gamma_panel::release();
-    std::cout << "OK." << std::endl;
-    std::exit(0);
-}
-
 static void ShowUsage()
 {
     std::cout << "Usage: gapaNEXT [port]  Start web UI server (default :9980)" << std::endl;
@@ -179,8 +175,10 @@ static void ShowUsage()
 
 // ----- REPL -----
 
-static void RunREPL()
+void RunREPL()
 {
+    s_hMainThread = OpenThread(THREAD_TERMINATE, FALSE, GetCurrentThreadId());
+
     std::cout << "gapaNEXT - GPU Gamma Ramp Switcher" << std::endl;
     std::cout << "Type 'help' for commands, 'exit' to quit." << std::endl;
     std::cout << std::endl;
@@ -211,7 +209,7 @@ static void RunREPL()
 
         if (cmd == "exit" || cmd == "quit" || cmd == "q")
         {
-            return;
+            break;
         }
         if (cmd == "help" || cmd == "h" || cmd == "?")
         {
@@ -247,44 +245,6 @@ static void RunREPL()
         }
         std::cerr << "Unknown command: " << tokens[0] << " (type 'help' for commands)" << std::endl;
     }
-}
-
-// ----- Main -----
-
-int main(int argc, char* argv[])
-{
-    if (argc >= 2)
-    {
-        std::string cmd = argv[1];
-        if (cmd == "--help" || cmd == "-h" || cmd == "help")
-        {
-            ShowUsage();
-            return 0;
-        }
-    }
-
-    int port = 9980;
-    if (argc >= 2)
-        port = atoi(argv[1]);
-    if (port < 1 || port > 65535)
-        port = 9980;
-
-    gamma_panel::instance()->apply_shortkeys();
-    RunTrayMenu(port);
-
-    s_hMainThread = OpenThread(THREAD_TERMINATE, FALSE, GetCurrentThreadId());
-
-    std::thread webThread([port]() { RunWebServer(port); });
-    RunREPL();
-
-    StopWebServer();
-    webThread.join();
-    StopTrayMenu();
-
     if (s_hMainThread)
         CloseHandle(s_hMainThread);
-
-    // If REPL exits without SafeShutdown (e.g. EOF), still clean up
-    SafeShutdown();
-    return 0;
 }

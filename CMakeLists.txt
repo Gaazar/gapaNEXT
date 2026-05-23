@@ -2,6 +2,7 @@
 # 项目特定的逻辑。
 #
 cmake_minimum_required(VERSION 3.10)
+project("gapaNEXT")
 
 # 如果支持，请为 MSVC 编译器启用热重载。
 if(POLICY CMP0141)
@@ -14,15 +15,14 @@ add_compile_options(/wd4244)
 add_compile_options(/wd4267)
 add_compile_options(/utf-8)
 
-project("gapaNEXT")
+option(GAPA_REPL "Enable repl cli" OFF)
 
 add_subdirectory("asio")
 
 set(CROW_INSTALL OFF)
 add_subdirectory("Crow")
-
-# 将源代码添加到此项目的可执行文件。
-add_executable(gapaNEXT
+set(srcs
+	"src/main.cpp"
 	"src/repl.cpp"
 	"src/repl.h"
 	"src/websvr.h"
@@ -31,7 +31,21 @@ add_executable(gapaNEXT
 	"src/gamma.h"
 	"src/tray.h"
 	"src/tray.cpp"
+	"src/resources.rc"
 )
+
+if(${GAPA_REPL})
+	add_executable(gapaNEXT
+		${srcs}
+	)
+	add_compile_definitions(GAPA_REPL)
+else()
+	add_executable(gapaNEXT WIN32
+		${srcs}
+	)
+	target_link_options(gapaNEXT PRIVATE "/ENTRY:mainCRTStartup")
+endif()
+
 add_custom_target(webui ALL
 	COMMAND npm install
 	COMMAND npm run build
@@ -52,9 +66,11 @@ if(CMAKE_VERSION VERSION_GREATER 3.12)
 	set_property(TARGET gapaNEXT PROPERTY CXX_STANDARD 20)
 endif()
 
-install(TARGETS gapaNEXT
+install(
+	TARGETS gapaNEXT
 	RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}
 )
-install(DIRECTORY ${CMAKE_SOURCE_DIR}/dist
+install(
+	DIRECTORY ${CMAKE_SOURCE_DIR}/dist
 	DESTINATION ${CMAKE_INSTALL_PREFIX}
 )
