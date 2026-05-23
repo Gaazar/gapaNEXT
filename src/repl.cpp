@@ -1,10 +1,23 @@
 #include "repl.h"
 #include "websvr.h"
 #include "gamma.h"
+#include "tray.h"
 
 #include <iostream>
 #include <sstream>
 #include <thread>
+#include <atomic>
+
+// ----- Quit signalling -----
+static std::atomic<bool> s_quitRequested{ false };
+static HANDLE s_hMainThread = NULL;
+
+void RequestQuit()
+{
+    s_quitRequested = true;
+    if (s_hMainThread)
+        CancelSynchronousIo(s_hMainThread);
+}
 
 // ----- Helpers -----
 
@@ -147,8 +160,16 @@ static void CmdHelp()
     std::cout << "  list, l               List available displays and presets" << std::endl;
     std::cout << "  status, st            Show current gamma per display" << std::endl;
     std::cout << "  help, h, ?            Show this help" << std::endl;
-    std::cout << "  exit, quit, q         Exit" << std::endl;
+    std::cout << "  exit, quit, q         Safe exit (reset gamma + release)" << std::endl;
     std::cout << std::endl;
+}
+
+static void SafeShutdown()
+{
+    std::cout << "Shutting down safely... ";
+    gamma_panel::release();
+    std::cout << "OK." << std::endl;
+    std::exit(0);
 }
 
 static void ShowUsage()
@@ -169,7 +190,7 @@ static void RunREPL()
     {
         std::cout << "gapaNEXT> " << std::flush;
 
-        if (!std::getline(std::cin, line))
+        if (!std::getline(std::cin, line) || s_quitRequested)
             break;
         if (line.empty())
             continue;
@@ -190,7 +211,7 @@ static void RunREPL()
 
         if (cmd == "exit" || cmd == "quit" || cmd == "q")
         {
-            break;
+            return;
         }
         if (cmd == "help" || cmd == "h" || cmd == "?")
         {
@@ -248,10 +269,22 @@ int main(int argc, char* argv[])
     if (port < 1 || port > 65535)
         port = 9980;
 
-    std::thread webThread([port]() { RunWebServer(port); });
+    gamma_panel::instance()->apply_shortkeys();
+    RunTrayMenu(port);
 
+    s_hMainThread = OpenThread(THREAD_TERMINATE, FALSE, GetCurrentThreadId());
+
+    std::thread webThread([port]() { RunWebServer(port); });
     RunREPL();
 
+    StopWebServer();
     webThread.join();
+    StopTrayMenu();
+
+    if (s_hMainThread)
+        CloseHandle(s_hMainThread);
+
+    // If REPL exits without SafeShutdown (e.g. EOF), still clean up
+    SafeShutdown();
     return 0;
 }

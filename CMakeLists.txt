@@ -12,10 +12,13 @@ if(POLICY CMP0141)
 endif()
 add_compile_options(/wd4244)
 add_compile_options(/wd4267)
+add_compile_options(/utf-8)
 
 project("gapaNEXT")
 
 add_subdirectory("asio")
+
+set(CROW_INSTALL OFF)
 add_subdirectory("Crow")
 
 # 将源代码添加到此项目的可执行文件。
@@ -26,21 +29,32 @@ add_executable(gapaNEXT
 	"src/websvr.cpp"
 	"src/gamma.cpp"
 	"src/gamma.h"
+	"src/tray.h"
+	"src/tray.cpp"
 )
 add_custom_target(webui ALL
 	COMMAND npm install
 	COMMAND npm run build
 	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/webui
-	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/webui/build ${CMAKE_SOURCE_DIR}/dist
+	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/webui/build
+		${CMAKE_SOURCE_DIR}/dist
 )
+
 # GDI32: SetDeviceGammaRamp / GetDeviceGammaRamp
 target_link_libraries(gapaNEXT gdi32.lib Crow)
 
 # 请求提权（highestAvailable: 有管理员权限时自动提升）
-# target_link_options(gapaNEXT PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'")
+# target_link_options(gapaNEXT
+# 	PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'"
+# )
 
 if(CMAKE_VERSION VERSION_GREATER 3.12)
 	set_property(TARGET gapaNEXT PROPERTY CXX_STANDARD 20)
 endif()
 
-# TODO: 如有需要，请添加测试并安装目标。
+install(TARGETS gapaNEXT
+	RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}
+)
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/dist
+	DESTINATION ${CMAKE_INSTALL_PREFIX}
+)

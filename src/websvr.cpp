@@ -8,6 +8,8 @@
 #include <optional>
 #include <algorithm>
 
+#include "shellapi.h"
+
 namespace fs = std::filesystem;
 
 // ----- Helpers -----
@@ -106,10 +108,18 @@ static std::optional<gamma_ramp> JsonToRamp(const crow::json::rvalue& j)
 }
 
 // ----- Web server -----
-
+crow::SimpleApp app;
+void OpenWebUI()
+{
+    std::string url = "http://localhost:" + std::to_string(app.port());
+    ShellExecuteA(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+}
+void StopWebServer()
+{
+    app.stop();
+}
 void RunWebServer(int port)
 {
-    crow::SimpleApp app;
     std::string webRoot = "dist";
 
     // Serve static files from dist/ with SPA fallback
@@ -358,9 +368,12 @@ void RunWebServer(int port)
                         float ny = (float)(int)pt[1] / 65535.0f;
                         vec.push_back({nx, ny});
                     }
-                    if (ch == 0) desc.r = std::move(vec);
-                    else if (ch == 1) desc.g = std::move(vec);
-                    else desc.b = std::move(vec);
+                    if (ch == 0)
+                        desc.r = std::move(vec);
+                    else if (ch == 1)
+                        desc.g = std::move(vec);
+                    else
+                        desc.b = std::move(vec);
                 }
 
                 fs::path gammaDir = fs::current_path() / "gamma";
@@ -390,7 +403,8 @@ void RunWebServer(int port)
                 return j;
             }
             auto json = crow::json::load(content);
-            if (!json) return crow::json::wvalue();
+            if (!json)
+                return crow::json::wvalue();
             return crow::json::wvalue(json);
         });
 
@@ -419,6 +433,9 @@ void RunWebServer(int port)
                 f << req.body;
                 crow::json::wvalue j;
                 j["ok"] = f.good();
+                f.flush();
+                f.close();
+                gamma_panel::instance()->apply_shortkeys();
                 return j;
             });
 

@@ -1,8 +1,11 @@
 #include "gamma.h"
+#include "crow.h"
 
 #include <windows.h>
 #include <iostream>
 #include <fstream>
+#include <thread>
+#include <atomic>
 
 // ----- Gamma ramp load / save (interleaved RGBRGB... file format) -----
 using namespace std;
@@ -132,11 +135,20 @@ gamma_ramp gamma_desc::to_ramp() const
         for (int i = 0; i < GAMMA_RAMP_SIZE; i++)
         {
             float x = (float)i / (GAMMA_RAMP_SIZE - 1);
-            if (x <= xs[0]) { out[i] = (WORD)(ys[0] * 65535.0f); continue; }
-            if (x >= xs[n - 1]) { out[i] = (WORD)(ys[n - 1] * 65535.0f); continue; }
+            if (x <= xs[0])
+            {
+                out[i] = (WORD)(ys[0] * 65535.0f);
+                continue;
+            }
+            if (x >= xs[n - 1])
+            {
+                out[i] = (WORD)(ys[n - 1] * 65535.0f);
+                continue;
+            }
 
             size_t seg = 0;
-            while (seg < n - 2 && x > xs[seg + 1]) seg++;
+            while (seg < n - 2 && x > xs[seg + 1])
+                seg++;
 
             float h = xs[seg + 1] - xs[seg];
             float t = (x - xs[seg]) / h;
@@ -146,12 +158,12 @@ gamma_ramp gamma_desc::to_ramp() const
             float y0 = ys[seg], y1 = ys[seg + 1];
             float m0 = d[seg] * h, m1 = d[seg + 1] * h;
 
-            float v = (2.0f * t3 - 3.0f * t2 + 1.0f) * y0
-                    + (t3 - 2.0f * t2 + t) * m0
-                    + (-2.0f * t3 + 3.0f * t2) * y1
-                    + (t3 - t2) * m1;
-            if (v < 0) v = 0;
-            if (v > 1.0f) v = 1.0f;
+            float v = (2.0f * t3 - 3.0f * t2 + 1.0f) * y0 + (t3 - 2.0f * t2 + t) * m0 + (-2.0f * t3 + 3.0f * t2) * y1 +
+                      (t3 - t2) * m1;
+            if (v < 0)
+                v = 0;
+            if (v > 1.0f)
+                v = 1.0f;
             out[i] = (WORD)(v * 65535.0f);
         }
 
@@ -176,7 +188,8 @@ bool gamma_desc::to_file(const std::string& path) const
         return false;
     }
 
-    auto write_vec = [&fs](const std::vector<pioint_t>& v) {
+    auto write_vec = [&fs](const std::vector<pioint_t>& v)
+    {
         uint32_t count = (uint32_t)v.size();
         fs.write((const char*)&count, sizeof(count));
         fs.write((const char*)v.data(), count * sizeof(pioint_t));
@@ -187,11 +200,237 @@ bool gamma_desc::to_file(const std::string& path) const
     return fs.good();
 }
 
+// ----- Hotkey state (file-scope) -----
+namespace
+{
+std::thread s_hotkeyThread;
+std::atomic<bool> s_hotkeysRunning{false};
+} // namespace
+
 /*gamma_panel*/
+void gamma_panel::apply_shortkeys()
+{
+    // Stop existing hotkey thread
+    if (s_hotkeysRunning)
+    {
+        s_hotkeysRunning = false;
+        if (s_hotkeyThread.joinable())
+        {
+            PostThreadMessage(GetThreadId(s_hotkeyThread.native_handle()), WM_QUIT, 0, 0);
+            s_hotkeyThread.join();
+        }
+    }
+
+    // Read gapa.json
+    std::cout << "Loading keybindings... " << std::endl;
+    ;
+    auto configPath = std::filesystem::current_path() / "gapa.json";
+    std::ifstream f(configPath);
+    if (!f)
+    {
+        std::cout << "Open config file failed: " << configPath << std::endl;
+        return;
+    }
+
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    if (content.empty())
+    {
+        std::cout << "Empty keybindings" << std::endl;
+        return;
+    }
+
+    auto json = crow::json::load(content);
+    if (!json || !json.has("keybindings"))
+    {
+        std::cout << "Empty keybindings" << std::endl;
+        return;
+    }
+
+    struct Action
+    {
+        std::string action;
+        std::string preset;
+        std::vector<int> displays;
+        UINT mods = 0;
+        UINT vk = 0;
+    };
+    std::vector<Action> actions;
+
+    for (auto& kb : json["keybindings"])
+    {
+        if (!kb.has("action") || !kb.has("key"))
+            continue;
+        Action act;
+        act.action = (std::string)kb["action"].s();
+        if (kb.has("preset"))
+            act.preset = (std::string)kb["preset"].s();
+        if (kb.has("display"))
+        {
+            for (auto& d : kb["display"])
+                act.displays.push_back((int)d);
+        }
+        // Parse key combo into modifiers + virtual key
+        UINT mods = 0, vk = 0;
+        for (auto& k : kb["key"])
+        {
+            std::string ks = (std::string)k.s();
+            for (auto& c : ks)
+                c = (char)tolower((unsigned char)c);
+            if (ks == "shift")
+                mods |= MOD_SHIFT;
+            else if (ks == "alt")
+                mods |= MOD_ALT;
+            else if (ks == "ctrl" || ks == "control")
+                mods |= MOD_CONTROL;
+            else if (ks == "win" || ks == "lwin" || ks == "rwin")
+                mods |= MOD_WIN;
+            else if (ks.size() >= 2 && ks[0] == 'f')
+            {
+                int fn = atoi(ks.c_str() + 1);
+                if (fn >= 1 && fn <= 24)
+                    vk = VK_F1 + fn - 1;
+            }
+            else if (ks.size() == 1)
+                vk = (UINT)toupper((unsigned char)ks[0]);
+        }
+        act.mods = mods;
+        act.vk = vk;
+        if (act.vk != 0)
+            actions.push_back(std::move(act));
+    }
+
+    if (actions.empty())
+    {
+        std::cout << "Empty keybindings" << std::endl;
+        return;
+    }
+
+    // Start background message-pump thread for hotkey handling
+    s_hotkeysRunning = true;
+    s_hotkeyThread = std::thread(
+        [actions = std::move(actions)]()
+        {
+            // Create a message queue for this thread
+            MSG msg;
+            PeekMessage(&msg, NULL, 0, 0, PM_NOREMOVE);
+
+            // Register all hotkeys
+            for (size_t i = 0; i < actions.size(); i++)
+            {
+                auto ok = RegisterHotKey(NULL, (int)(i + 1), actions[i].mods, actions[i].vk);
+                if (!ok)
+                    std::cout << "Failed to register hotkey for action " << i << std::endl;
+                else
+                    std::cout << "Registered hotkey for action " << i << std::endl;
+            }
+            std::cout << "Loaded keybindings" << std::endl;
+
+            // Message loop
+            while (s_hotkeysRunning && GetMessage(&msg, NULL, 0, 0))
+            {
+                if (msg.message == WM_HOTKEY)
+                {
+                    int id = (int)msg.wParam;
+                    if (id < 1 || id > (int)actions.size())
+                        continue;
+                    auto& act = actions[id - 1];
+                    auto* panel = gamma_panel::instance();
+
+                    auto forEachDisplay = [&](auto callback)
+                    {
+                        auto displays = panel->displays();
+                        if (act.displays.empty())
+                        {
+                            for (auto& d : displays)
+                                callback(d.index);
+                        }
+                        else
+                        {
+                            for (int di : act.displays)
+                            {
+                                if (di == 0)
+                                {
+                                    for (auto& d : displays)
+                                        callback(d.index);
+                                }
+                                else
+                                {
+                                    callback(di - 1);
+                                }
+                            }
+                        }
+                    };
+
+                    if (act.action == "reset_all")
+                    {
+                        forEachDisplay([&](int idx) { panel->reset_display(idx); });
+                    }
+                    else if (act.action == "reset_display")
+                    {
+                        forEachDisplay([&](int idx) { panel->reset_display(idx); });
+                    }
+                    else if (act.action == "apply_preset")
+                    {
+                        auto presetPath = std::filesystem::current_path() / "gamma" / act.preset;
+                        forEachDisplay([&](int idx) { panel->apply_preset(presetPath, idx); });
+                    }
+                }
+            }
+
+            // Unregister all hotkeys on exit
+            std::cout << "Unregistering hotkeys... " << std::endl;
+            for (size_t i = 0; i < actions.size(); i++)
+            {
+                auto ok = UnregisterHotKey(NULL, (int)(i + 1));
+                if (!ok)
+                    std::cout << "Failed to unregister hotkey for action " << i << std::endl;
+                else
+                    std::cout << "Unregistered hotkey for action " << i << std::endl;
+            }
+            std::cout << "Unregistered hotkeys" << std::endl;
+        });
+}
+
 gamma_panel* gamma_panel::instance()
 {
     static gamma_panel inst;
     return &inst;
+}
+
+void gamma_panel::release()
+{
+    gamma_ramp identity;
+    auto& disps = instance()->displays_;
+
+    // Re-enumerate to refresh the display list
+    instance()->displays();
+
+    std::cout << "\nResetting all displays to linear gamma..." << std::endl;
+    for (auto& [idx, name] : disps)
+    {
+        HDC hdc = CreateDCA(name.c_str(), nullptr, nullptr, nullptr);
+        if (!hdc)
+        {
+            std::cout << "  [" << idx << "] " << name << " ... SKIP (cannot access)" << std::endl;
+            continue;
+        }
+        BOOL result = SetDeviceGammaRamp(hdc, const_cast<LPVOID>(static_cast<LPCVOID>(&identity)));
+        DeleteDC(hdc);
+        std::cout << "  [" << idx << "] " << name << " ... " << (result ? "OK" : "FAILED") << std::endl;
+    }
+
+    if (s_hotkeysRunning)
+    {
+        s_hotkeysRunning = false;
+        std::cout << "unregistering hotkeys... ";
+        if (s_hotkeyThread.joinable())
+        {
+            PostThreadMessage(GetThreadId(s_hotkeyThread.native_handle()), WM_QUIT, 0, 0);
+            s_hotkeyThread.join();
+        }
+        std::cout << "OK" << std::endl;
+    }
+    std::cout << "release complete." << std::endl;
 }
 std::vector<std::filesystem::path> gamma_panel::presets() const
 {

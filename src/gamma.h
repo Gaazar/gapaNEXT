@@ -46,6 +46,7 @@ struct gamma_panel
 
   public:
     static gamma_panel* instance();
+    static void release();
     std::vector<std::filesystem::path> presets() const;
     std::vector<display_info> displays();
     bool apply_preset(const std::filesystem::path& preset, int display_idx);
@@ -56,5 +57,6 @@ struct gamma_panel
         return current_preset_;
     }
     gamma_ramp current_gamma(int display_idx) const;
+    void apply_shortkeys();
 };
 
