@@ -1,6 +1,6 @@
 # gapaNEXT
 
-GPU Gamma Ramp Switcher — a Windows desktop tool to control and fine-tune display gamma calibration.
+Gamma Panel NEXT — a Windows desktop tool to control and fine-tune display gamma calibration.
 
 ## Features
 
@@ -92,3 +92,7 @@ Gamma curve description files stored in the `gamma/` directory. Each file define
 ## License
 
 MIT — see [LICENSE.txt](LICENSE.txt)
+
+## Site
+
+[Gamma Panel NEXT](https://gapa.50to.me)

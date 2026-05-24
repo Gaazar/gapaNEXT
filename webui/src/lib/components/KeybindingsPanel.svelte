@@ -95,7 +95,11 @@
   }
 
   function kbDetails(kb: typeof store.keybindings[0]): string {
-    if (kb.action === 'apply_preset' && kb.preset) return kb.preset;
+    if (kb.action === 'apply_preset' && kb.preset) {
+      let d = kb.preset;
+      if (kb.display && kb.display[0] !== 0) d += ' (D' + kb.display.join(',') + ')';
+      return d;
+    }
     if (kb.display && kb.display[0] !== 0) return 'D' + kb.display.join(',');
     return '-';
   }
