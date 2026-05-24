@@ -2,7 +2,7 @@
 # 项目特定的逻辑。
 #
 cmake_minimum_required(VERSION 3.10)
-project("gapaNEXT")
+project("gapaNEXT" VERSION 1.0.0)
 
 # 如果支持，请为 MSVC 编译器启用热重载。
 if(POLICY CMP0141)
@@ -14,6 +14,8 @@ endif()
 add_compile_options(/wd4244)
 add_compile_options(/wd4267)
 add_compile_options(/utf-8)
+
+add_compile_definitions(GAPA_VERSION="${PROJECT_VERSION}")
 
 option(GAPA_REPL "Enable repl cli" OFF)
 
