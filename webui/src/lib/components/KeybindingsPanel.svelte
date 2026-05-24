@@ -167,6 +167,8 @@
   {/if}
 </div>
 
+<p class="kb-admin-hint">{t('keybinding_admin_hint')}</p>
+
 <style>
   .kb-table-wrap {
     max-height: 260px;
@@ -257,5 +259,10 @@
   .capturing {
     background: #00d4ff !important;
     color: #0c1014;
+  }
+  .kb-admin-hint {
+    font-size: 10px;
+    color: #64748b;
+    margin: 6px 0 0 0;
   }
 </style>

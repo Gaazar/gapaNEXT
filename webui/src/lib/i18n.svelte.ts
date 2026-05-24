@@ -16,6 +16,7 @@ const I18N: Record<string, Record<string, string>> = {
     update_preset: '更新预设',
     edit: '编辑', save: '保存', cancel: '取消', actions: '操作',
     action: '动作', details: '详情', hotkey: '快捷键',
+    keybinding_admin_hint: '全屏游戏中快捷键无响应请尝试用管理员身份运行本程序',
   },
   en: {
     display: 'Display', all_displays: 'All Displays', curve_editor: 'Curve Editor', link: 'Link',
@@ -34,6 +35,7 @@ const I18N: Record<string, Record<string, string>> = {
     update_preset: 'Update Preset',
     edit: 'Edit', save: 'Save', cancel: 'Cancel', actions: 'Actions',
     action: 'Action', details: 'Details', hotkey: 'Hotkey',
+    keybinding_admin_hint: 'If hotkeys don\'t respond in fullscreen games, try running the program as administrator.',
   },
 };
 
