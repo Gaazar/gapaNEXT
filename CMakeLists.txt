@@ -59,6 +59,9 @@ add_custom_target(webui ALL
 # GDI32: SetDeviceGammaRamp / GetDeviceGammaRamp
 target_link_libraries(gapaNEXT gdi32.lib Crow)
 
+# DPI Per-Monitor V2: 防止系统缩放导致模糊
+target_link_options(gapaNEXT PRIVATE "/MANIFESTINPUT:${CMAKE_SOURCE_DIR}/src/app.manifest")
+
 # 请求提权（highestAvailable: 有管理员权限时自动提升）
 # target_link_options(gapaNEXT
 # 	PRIVATE "/MANIFESTUAC:level='highestAvailable' uiAccess='false'"
